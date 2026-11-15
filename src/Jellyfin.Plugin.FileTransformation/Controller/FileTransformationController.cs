@@ -30,6 +30,7 @@ namespace Jellyfin.Plugin.FileTransformation.Controller
         [Authorize(Policy = Policies.RequiresElevation)]
         public ActionResult RegisterTransformation([FromBody] TransformationRegistrationPayload payload, [FromServices] IWebFileTransformationWriteService writeService)
         {
+            TransformationHelper.WarnIfHttpCallback(payload, m_logger);
             writeService.AddTransformation(payload.Id, payload.FileNamePattern, async (path, contents) =>
             {
                 await TransformationHelper.ApplyTransformation(path, contents, payload, m_logger, m_serverApplicationHost);

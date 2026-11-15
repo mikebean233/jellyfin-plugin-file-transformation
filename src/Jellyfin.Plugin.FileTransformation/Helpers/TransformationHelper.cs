@@ -12,18 +12,25 @@ namespace Jellyfin.Plugin.FileTransformation.Helpers
 {
     public static class TransformationHelper
     {
-        private static readonly HttpClient s_sharedHttpClient = new HttpClient()
+        /// <summary>
+        /// This fork has no HTTP callbacks: whatever the registered URL returned became the page
+        /// every user loads, so anyone with an admin token could point it at their own server.
+        /// Warns when a registration asks for one; its assembly or pipe callback still runs.
+        /// </summary>
+        public static void WarnIfHttpCallback(TransformationRegistrationPayload payload, ILogger logger)
         {
-            Timeout = TimeSpan.FromSeconds(15),
-        };
+            if (!string.IsNullOrEmpty(payload.TransformationEndpoint))
+            {
+                logger.LogWarning($"[FileTransformation] Transformation {payload.Id} asks for an HTTP callback, which this build doesn't support; ignoring it");
+            }
+        }
 
         public static async Task ApplyTransformation(string path, Stream contents, TransformationRegistrationPayload payload, ILogger logger, IServerApplicationHost serverApplicationHost)
         {
             logger.LogDebug($"[FileTransformation] Transformation requested for {path}");
 
             // Validate that at least one callback mechanism is configured
-            if (payload.CallbackAssembly == null && payload.TransformationPipe == null
-                && string.IsNullOrEmpty(payload.TransformationEndpoint))
+            if (payload.CallbackAssembly == null && payload.TransformationPipe == null)
             {
                 logger.LogWarning($"[FileTransformation] No callback configured for {path}, skipping");
                 return;
@@ -126,35 +133,7 @@ namespace Jellyfin.Plugin.FileTransformation.Helpers
                 }
             }
 
-            // Tier 3: HTTP endpoint
-            if (transformedString == null && !string.IsNullOrEmpty(payload.TransformationEndpoint))
-            {
-                try
-                {
-                    string requestUri = payload.TransformationEndpoint;
-                    if (!requestUri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-                        && !requestUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    {
-                        requestUri = $"http://localhost:{serverApplicationHost.HttpPort}{payload.TransformationEndpoint}";
-                    }
-
-                    HttpResponseMessage response = await s_sharedHttpClient
-                        .PostAsync(requestUri, new StringContent(obj.ToString(Formatting.None), Encoding.UTF8, "application/json"));
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        logger.LogError($"[FileTransformation] HTTP callback returned {(int)response.StatusCode} for {path}");
-                        return;
-                    }
-
-                    transformedString = await response.Content.ReadAsStringAsync();
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, $"[FileTransformation] HTTP callback failed for {path}");
-                    return;
-                }
-            }
+            // Tier 3 (HTTP endpoint) is removed in this fork: see WarnIfHttpCallback
 
             if (transformedString == null)
             {

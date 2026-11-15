@@ -26,6 +26,8 @@ namespace Jellyfin.Plugin.FileTransformation
                 ILogger logger = FileTransformationPlugin.Instance.ServiceProvider.GetRequiredService<IFileTransformationLogger>();
                 IServerApplicationHost serverApplicationHost = FileTransformationPlugin.Instance.ServiceProvider.GetRequiredService<IServerApplicationHost>();
 
+                TransformationHelper.WarnIfHttpCallback(castedPayload, logger);
+
                 writeService.AddTransformation(castedPayload.Id, castedPayload.FileNamePattern, async (path, contents) =>
                 {
                     await TransformationHelper.ApplyTransformation(path, contents, castedPayload, logger, serverApplicationHost);
