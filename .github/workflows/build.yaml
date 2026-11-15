@@ -48,18 +48,44 @@ jobs:
           mkdir -p dist
           zip -j "$zip" "$PROJECT/bin/Release/net10.0/Jellyfin.Plugin.FileTransformation.dll"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "md5=$(md5sum "$zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Manifest
+        # Jellyfin plugin repository file for this release only, so the repository URL
+        # .../releases/download/<tag>/manifest.json always offers exactly this version
+        run: |
+          zip="${{ steps.package.outputs.zip }}"
+          jq -n \
+            --arg version "${{ steps.version.outputs.version }}" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$zip")" \
+            --arg md5 "${{ steps.package.outputs.md5 }}" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg tag "$GITHUB_REF_NAME" \
+            '[{
+              guid: "5e87cc92-571a-4d8d-8d98-d2d4147f9f90",
+              name: "File Transformation",
+              overview: "Lets other plugins change the web client as it is served",
+              description: "Fork of IAmParadox27/jellyfin-plugin-file-transformation without HTTP endpoint callbacks.",
+              owner: "mikebean233",
+              category: "General",
+              versions: [{
+                version: $version, changelog: ("Release " + $tag), targetAbi: "12.4.0.0",
+                sourceUrl: $url, checksum: $md5, timestamp: $ts
+              }]
+            }]' > dist/manifest.json
+          cat dist/manifest.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: file-transformation
-          path: dist/*.zip
+          path: dist/*
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" dist/manifest.json \
             --title "$GITHUB_REF_NAME (Jellyfin $JELLYFIN_VERSION)" \
-            --notes "Fork of IAmParadox27/jellyfin-plugin-file-transformation without HTTP endpoint callbacks. Checksum (md5): ${{ steps.package.outputs.md5 }}"
+            --notes "Fork of IAmParadox27/jellyfin-plugin-file-transformation without HTTP endpoint callbacks. Jellyfin repository (this version only): https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/manifest.json · md5 ${{ steps.package.outputs.md5 }} · sha256 ${{ steps.package.outputs.sha256 }}"
